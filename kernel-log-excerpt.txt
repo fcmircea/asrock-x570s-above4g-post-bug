@@ -1,0 +1,41 @@
+ASRock X570S PG Riptide, BIOS P5.80, Ryzen 5 5600, Intel Arc A310 in the lower x16 slot (chipset).
+Linux kernel log, first PCI enumeration lines, i.e. the bridge windows exactly as the firmware
+left them before Linux reassigned anything. Only the prefetchable windows are shown.
+
+Topology: 00:01.2 CPU root port (chipset uplink) -> 01:00.0 chipset upstream port
+-> 02:01.0 chipset downstream port -> 04:00.0 / 05:01.0 (Arc internal switch) -> 06:00.0 Arc A310
+
+=== Above 4G Decoding ENABLED, Re-Size BAR ENABLED (POST shows noise) ===
+pci 0000:00:01.2:   bridge window [mem 0xfc400000-0xfccfffff 64bit pref]
+pci 0000:01:00.0:   bridge window [mem 0xfc400000-0xfccfffff 64bit pref]
+pci 0000:02:01.0:   bridge window [mem 0x7e00000000-0x7f007fffff 64bit pref]
+pci 0000:04:00.0:   bridge window [mem 0x7e00000000-0x7effffffff 64bit pref]
+pci 0000:05:01.0:   bridge window [mem 0x7e00000000-0x7effffffff 64bit pref]
+pci 0000:06:00.0: BAR 2 [mem 0x7e00000000-0x7effffffff 64bit pref]
+pci 0000:02:01.0: bridge window [mem 0x7e00000000-0x7f007fffff 64bit pref]: can't claim; no compatible bridge window
+pci 0000:06:00.0: BAR 2 [mem 0x7e00000000-0x7effffffff 64bit pref]: can't claim; no compatible bridge window
+
+=== Above 4G Decoding ENABLED, Re-Size BAR DISABLED (POST still shows noise) ===
+pci 0000:00:01.2:   bridge window [mem 0xfc400000-0xfccfffff 64bit pref]
+pci 0000:01:00.0:   bridge window [mem 0xfc400000-0xfccfffff 64bit pref]
+pci 0000:02:01.0:   bridge window [mem 0x7fe0000000-0x7ff07fffff 64bit pref]
+pci 0000:04:00.0:   bridge window [mem 0x7fe0000000-0x7fefffffff 64bit pref]
+pci 0000:05:01.0:   bridge window [mem 0x7fe0000000-0x7fefffffff 64bit pref]
+pci 0000:06:00.0: BAR 2 [mem 0x7fe0000000-0x7fefffffff 64bit pref]
+pci 0000:06:00.0: BAR 2 [mem 0x7fe0000000-0x7fefffffff 64bit pref]: can't claim; no compatible bridge window
+
+=== Above 4G Decoding DISABLED (POST and setup display correctly) ===
+pci 0000:00:01.2:   bridge window [mem 0xd0000000-0xe14fffff 64bit pref]
+pci 0000:01:00.0:   bridge window [mem 0xd0000000-0xe14fffff 64bit pref]
+pci 0000:02:01.0:   bridge window [mem 0xd0000000-0xe07fffff 64bit pref]
+pci 0000:04:00.0:   bridge window [mem 0xd0000000-0xdfffffff 64bit pref]
+pci 0000:05:01.0:   bridge window [mem 0xd0000000-0xdfffffff 64bit pref]
+pci 0000:06:00.0: BAR 2 [mem 0xd0000000-0xdfffffff 64bit pref]
+(no "can't claim" lines)
+
+In the failing cases the firmware programs 02:01.0 and the Arc's own bridges for the BAR above
+4 GiB, but leaves the CPU root port 00:01.2 and the chipset upstream port 01:00.0 forwarding only
+0xfc400000-0xfccfffff. CPU writes to the framebuffer therefore never reach the card during POST.
+Linux detects this and rebuilds the chain, so the operating system is unaffected.
+
+BIOS P5.82 shows the same pattern (Above 4G on: "can't claim", noise at POST).
