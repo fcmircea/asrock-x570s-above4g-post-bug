@@ -5,7 +5,9 @@ noise (or nothing) from power-on until the boot loader, try **Above 4G Decoding 
 this board the firmware places the GPU's memory window above 4 GiB but does not program the
 upstream PCIe bridges for it, so the POST screen never reaches the card.
 
-Status: reported to ASRock (ticket: _pending_). No fix as of BIOS P5.82.
+Status: reported to ASRock through their support form on 2026-10-16 (no ticket number yet).
+No fix as of BIOS P5.82. Discussion:
+[Level1Techs thread](https://forum.level1techs.com/t/asrock-x570s-pg-riptide-no-post-picture-noise-with-a-gpu-in-the-chipset-slot-and-above-4g-on-cause-and-workaround/258816).
 
 ## Setup
 
