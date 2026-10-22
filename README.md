@@ -1,13 +1,55 @@
 # ASRock X570S PG Riptide: no POST picture with a GPU in the chipset slot and Above 4G Decoding on
 
 **TL;DR** If your GPU sits in a chipset-connected x16 slot on an AM4 board and the screen shows
-noise (or nothing) from power-on until the boot loader, try **Above 4G Decoding = Disabled**. On
-this board the firmware places the GPU's memory window above 4 GiB but does not program the
-upstream PCIe bridges for it, so the POST screen never reaches the card.
+noise (or nothing) from power-on until the boot loader, look for **another card behind the chipset
+with 32-bit prefetchable BARs** (here an Intel X550-T2). With Above 4G Decoding on, the firmware
+places the GPU's memory window above 4 GiB, but the bridges the two cards share get the other card's
+32-bit window, so the POST screen never reaches the GPU. Remove or move that card, or set
+**Above 4G Decoding = Disabled**.
 
-Status: reported to ASRock through their support form on 2026-10-16 (no ticket number yet).
-No fix as of BIOS P5.82. Discussion:
+Status: **trigger confirmed 2026-10-22** (see [Update](#update-2026-10-22-the-trigger-is-the-x550-t2)).
+Reported to ASRock through their support form on 2026-10-16; they could not reproduce it on the
+same board and BIOS, and have been sent the result. No fix as of BIOS P5.82. Discussion:
 [Level1Techs thread](https://forum.level1techs.com/t/asrock-x570s-pg-riptide-no-post-picture-noise-with-a-gpu-in-the-chipset-slot-and-above-4g-on-cause-and-workaround/258816).
+
+## Update 2026-10-22: the trigger is the X550-T2
+
+With the Intel X550-T2 taken out of its chipset slot and **nothing else changed** (BIOS P5.82,
+Above 4G Decoding and Re-Size BAR both Enabled, Arc A310 still in the lower x16 slot, NVMe adapter
+still in the upper slot), POST, the setup prompt and GRUB display correctly:
+
+| X550 removed, Above 4G + ReBAR on: POST | ... and GRUB |
+|---|---|
+| ![POST](images/5-post-above4g-on-x550-removed.jpg) | ![GRUB](images/6-grub-above4g-on-x550-removed.jpg) |
+
+The firmware's bridge windows on that boot, before Linux touches anything:
+
+```
+00:01.2 (CPU root port, chipset uplink)  pref window 0x7e00000000-0x7f007fffff 64bit
+01:00.0 (chipset upstream port)          pref window 0x7e00000000-0x7f007fffff 64bit
+02:01.0 (chipset downstream port)        pref window 0x7e00000000-0x7f007fffff 64bit
+06:00.0 Arc A310, BAR 2                  0x7e00000000-0x7effffffff (4 GB)
+```
+
+No `can't claim` lines. The boot just before, same settings, X550 fitted: five of them and a blind
+POST. Excerpt: [kernel-log-excerpt.txt](kernel-log-excerpt.txt).
+
+Why the X550 matters: its BAR0 (4 MiB) and BAR3 (16 KiB) are **32-bit prefetchable**, and it sits
+under the same two bridges as the GPU (00:01.2 and 01:00.0, which fan out to every chipset device).
+A bridge has one prefetchable window. With one device needing it below 4 GiB and another above,
+the firmware must either place every prefetchable BAR under those bridges below 4 GiB, or put the
+32-bit ones in the non-prefetchable window. It does neither: the shared bridges end up with the
+X550's window `0xfc400000-0xfccfffff`, sized exactly for the X550, while the GPU's branch is
+programmed above 4 GiB. That `0xfc400000-0xfccfffff` window in the original log is the X550's.
+
+Reading the AMI `PciBus` module of the BIOS images (disassembly, unsymbolled, so **inferred**):
+the 32/64-bit prefetchable merge is decided per bridge and applied only to that bridge's direct
+children, and the shared window is written 64-bit first, 32-bit last. That code is the same in
+every release from 2.20 to 5.82, so this is probably **not a regression**: "it worked a year ago"
+more likely means "before a BIOS flash reset Above 4G to its default ON" or "before the X550 went in".
+That corrects the version history below.
+
+Not tested: the X550 in another slot, or another card with 32-bit prefetchable BARs.
 
 ## Setup
 
@@ -80,8 +122,9 @@ dmesg | grep -E "bridge window|BAR 2|can't claim"
   IFRExtractor-RS. The defaults for Above 4G Decoding and Re-Size BAR are Enabled in all of them,
   byte-identical in the NVRAM defaults store (`PCI_COMMON` = `00 00 01 01 01`).
 - **What did change**: AMD's PCIe init modules (`AmdNbioPcieDxe`, `AmdNbioPcieZPDxe`) in P5.65
-  (AGESA 1.2.0.E) and again in P5.82; AMI's `PciBus` / `PciRootBridge` last changed in P5.50 and
-  P5.82. **P5.82 does not fix it.** Which version introduced the fault is unconfirmed.
+  (AGESA 1.2.0.E) and again in P5.82; AMI's `PciBus` / `PciRootBridge` file hashes changed in P5.50
+  and P5.82. **P5.82 does not fix it.** *(2026-10-22: the `PciBus` code itself is identical across
+  2.20 to 5.82, the hash changes are build constants; see the update above.)*
 
 ## Cost of the workaround
 
@@ -98,5 +141,12 @@ gaming it may matter more.
 
 ## Same problem on your board?
 
-Open an issue here with the board, BIOS/AGESA version, the slot, and whether Above 4G off fixes it.
+Check what else sits behind the chipset with a 32-bit prefetchable BAR:
+
+```sh
+sudo lspci -vv | awk '/^[0-9a-f]/{dev=$0} /32-bit, prefetchable/{print dev; print}'
+```
+
+Open an issue here with the board, BIOS/AGESA version, the slot, the other cards behind the chipset,
+and whether removing one of them or Above 4G off fixes it.
 More reports make it easier for the vendors to act.
